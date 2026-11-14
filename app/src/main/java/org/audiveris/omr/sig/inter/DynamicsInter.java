@@ -285,6 +285,17 @@ public class DynamicsInter
         final boolean aboveStaff = switches.getValue(ProcessingSwitch.dynamicsAboveStaff);
         final boolean belowStaff = switches.getValue(ProcessingSwitch.dynamicsBelowStaff);
 
+        // Check both sides and keep the closest staff, when the staves belong to different
+        // parts (e.g. choir voices). Within a part (e.g. piano grand staff) the chord above is
+        // still preferred, since a sign between the two staves applies to the upper one.
+        // (Formerly the chord above was always preferred, so that a dynamics sign printed
+        // just above a staff was often linked to the staff above of another part)
+        Link bestLink = null;
+        Staff bestStaff = null;
+        double bestDy = Double.MAX_VALUE;
+        Link topLink = null;
+        Staff topStaff = null;
+
         for (VerticalSide side : VerticalSide.values()) {
             if (side == VerticalSide.TOP && !aboveStaff) {
                 continue;
@@ -318,28 +329,48 @@ public class DynamicsInter
                 }
             }
 
-            // Check vertical distance between element and chord
-            if (dyChord > maxDy) {
-                // Check vertical distance between element and staff
-                final Staff chordStaff = (side == VerticalSide.TOP) //
-                        ? chord.getBottomStaff()
-                        : chord.getTopStaff();
-                final double dyStaff = chordStaff.gapTo(widenedBounds);
+            // Check vertical distance between element and chord / staff
+            final Staff chordStaff = (side == VerticalSide.TOP) //
+                    ? chord.getBottomStaff()
+                    : chord.getTopStaff();
+            final double dyStaff = chordStaff.gapTo(widenedBounds);
 
-                if (dyStaff > maxDy) {
-                    if (isVip()) {
-                        logger.info("VIP {} too far from staff/chord: {}", this, dyStaff);
-                    }
-
-                    continue;
+            if ((dyChord > maxDy) && (dyStaff > maxDy)) {
+                if (isVip()) {
+                    logger.info("VIP {} too far from staff/chord: {}", this, dyStaff);
                 }
+
+                continue;
+            }
+
+            // Proximity to the staff is what matters, chord distance depends on pitch
+            final double dy = Math.min(dyStaff, dyChord);
+
+            if (isVip()) {
+                logger.info("VIP {} side:{} dyStaff:{} dyChord:{}", this, side, dyStaff, dyChord);
             }
 
             // For dynamics & for chord
-            return new Link(chord, new ChordDynamicsRelation(), false);
+            final Link link = new Link(chord, new ChordDynamicsRelation(), false);
+
+            if (side == VerticalSide.TOP) {
+                topLink = link;
+                topStaff = chordStaff;
+            }
+
+            if (dy < bestDy) {
+                bestDy = dy;
+                bestLink = link;
+                bestStaff = chordStaff;
+            }
         }
 
-        return null;
+        if ((topLink != null) && (bestLink != topLink) && (topStaff.getPart() == bestStaff
+                .getPart())) {
+            return topLink; // Same part: keep the staff above
+        }
+
+        return bestLink;
     }
 
     //-------------//

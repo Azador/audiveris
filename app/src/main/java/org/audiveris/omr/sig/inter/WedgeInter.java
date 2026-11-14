@@ -26,6 +26,7 @@ import org.audiveris.omr.constant.ConstantSet;
 import org.audiveris.omr.glyph.Glyph;
 import org.audiveris.omr.glyph.Shape;
 import org.audiveris.omr.math.PointUtil;
+import org.audiveris.omr.sheet.Part;
 import org.audiveris.omr.sheet.Scale;
 import org.audiveris.omr.sheet.Sheet;
 import org.audiveris.omr.sheet.Staff;
@@ -417,18 +418,32 @@ public class WedgeInter
                 }
             }
         } else {
-            // Look above
+            // Look both above and below, and keep the closest complete side, when the
+            // staves belong to different parts (e.g. choir voices). Within a part (e.g. piano
+            // grand staff) above is still preferred.
+            // (Formerly above was always preferred, so that a wedge printed just above a
+            // staff was linked to the staff above of another part)
+            final TreeMap<HorizontalSide, Link> above = new TreeMap<>();
+            final TreeMap<HorizontalSide, Link> below = new TreeMap<>();
+
             for (HorizontalSide hSide : HorizontalSide.values()) {
-                map.put(hSide, lookup(system, hSide, TOP));
+                above.put(hSide, lookup(system, hSide, TOP));
+                below.put(hSide, lookup(system, hSide, BOTTOM));
             }
 
-            if (map.get(LEFT) == null || map.get(RIGHT) == null) {
-                map.clear();
+            final double dyAbove = staffGap(above, TOP);
+            final double dyBelow = staffGap(below, BOTTOM);
 
-                // Then look below if needed
-                for (HorizontalSide hSide : HorizontalSide.values()) {
-                    map.put(hSide, lookup(system, hSide, BOTTOM));
-                }
+            if ((dyBelow < dyAbove) && (dyAbove < Double.MAX_VALUE)
+                    && (sidePart(above, TOP) == sidePart(below, BOTTOM))) {
+                map.putAll(above); // Same part: keep the staff above
+            } else if (dyBelow < dyAbove) {
+                map.putAll(below);
+            } else if (dyAbove < Double.MAX_VALUE) {
+                map.putAll(above);
+            } else {
+                // No complete side: what was found below, if any (as before)
+                map.putAll(below);
             }
         }
 
@@ -444,6 +459,66 @@ public class WedgeInter
         }
 
         return links;
+    }
+
+    //----------//
+    // staffGap //
+    //----------//
+    /**
+     * Report the vertical gap between this wedge and the staff of the chords found on
+     * one vertical side.
+     *
+     * @param links the links found at left and right, for this side
+     * @param vSide TOP for chords above the wedge, BOTTOM for chords below
+     * @return the gap, or Double.MAX_VALUE if the side is not complete
+     */
+    private double staffGap (TreeMap<HorizontalSide, Link> links,
+                             VerticalSide vSide)
+    {
+        if (links.get(LEFT) == null || links.get(RIGHT) == null) {
+            return Double.MAX_VALUE;
+        }
+
+        double gap = Double.MAX_VALUE;
+
+        for (Link link : links.values()) {
+            final AbstractChordInter chord = (AbstractChordInter) link.partner;
+            final Staff chordStaff = (vSide == TOP) ? chord.getBottomStaff() : chord.getTopStaff();
+
+            if (chordStaff != null) {
+                gap = Math.min(gap, chordStaff.gapTo(getBounds()));
+            }
+        }
+
+        return gap;
+    }
+
+    //----------//
+    // sidePart //
+    //----------//
+    /**
+     * Report the part of the staff of the chords found on one vertical side.
+     *
+     * @param links the links found at left and right, for this side
+     * @param vSide TOP for chords above the wedge, BOTTOM for chords below
+     * @return the part, or null
+     */
+    private static Part sidePart (TreeMap<HorizontalSide, Link> links,
+                                  VerticalSide vSide)
+    {
+        for (Link link : links.values()) {
+            if (link != null) {
+                final AbstractChordInter chord = (AbstractChordInter) link.partner;
+                final Staff chordStaff = (vSide == TOP) ? chord.getBottomStaff()
+                        : chord.getTopStaff();
+
+                if (chordStaff != null) {
+                    return chordStaff.getPart();
+                }
+            }
+        }
+
+        return null;
     }
 
     //---------------//
