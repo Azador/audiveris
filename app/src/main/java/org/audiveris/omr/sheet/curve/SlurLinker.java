@@ -554,6 +554,23 @@ public class SlurLinker
             }
         }
 
+        // A small slur linked on both sides must cover a good part of the gap between its heads.
+        // Otherwise it is rather a piece of another symbol, typically the hook of an eighth rest
+        // between two notes, whose dot is then taken as an augmentation dot and the rest is lost.
+        if ((leftLink != null) && (rightLink != null)) {
+            final Rectangle lb = leftLink.partner.getBounds();
+            final Rectangle rb = rightLink.partner.getBounds();
+            final int gap = rb.x - (lb.x + lb.width);
+            final int width = slur.getBounds().width;
+
+            if ((width <= params.maxSmallSlurWidth) && (gap > 0)
+                    && (width < (constants.minGapCoverage.getValue() * gap))) {
+                logger.debug("{} too small for gap {} between its heads", slur, gap);
+
+                return null;
+            }
+        }
+
         // No link on left and on right?
         if (linkPair.isEmpty()) {
             return null;
@@ -690,6 +707,10 @@ public class SlurLinker
         private final Scale.Fraction maxSmallSlurWidth = new Scale.Fraction(
                 1.5,
                 "Maximum width for a small slur");
+
+        private final Constant.Ratio minGapCoverage = new Constant.Ratio(
+                0.4,
+                "Minimum ratio of small slur width WRT gap between linked heads");
     }
 
     //------------//
