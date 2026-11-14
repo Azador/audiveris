@@ -304,7 +304,12 @@ public class LedgersPostAnalysis
                     : (Math.floor(info.delta) > maxDelta ? "DELTA" : "     ");
 
             final int minHeight = (int) Math.floor(minHeightRatio * interline);
-            final int maxHeight = (int) Math.ceil(maxHeightRatio * interline);
+            // A ledger as thick as a staff line is always plausible, even if the sheet
+            // population is dominated by thin false candidates (slurs, lyric extenders)
+            final int maxHeight = Math.max(
+                    (int) Math.ceil(maxHeightRatio * interline),
+                    (int) Math.ceil(
+                            constants.maxLineHeightRatio.getValue() * sheet.getScale().getMaxFore()));
             final String hH = Math.ceil(info.height) < minHeight ? "height"
                     : (Math.floor(info.height) > maxHeight ? "HEIGHT" : "      ");
 
@@ -389,6 +394,10 @@ public class LedgersPostAnalysis
                 "none",
                 1,
                 "Coeff for standard deviation on maxHeight");
+
+        private final Constant.Ratio maxLineHeightRatio = new Constant.Ratio(
+                1.5,
+                "Ledger height always accepted up to this ratio of max staff line thickness");
     }
 
     //------//
